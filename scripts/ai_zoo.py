@@ -140,7 +140,7 @@ def main():
     parser.add_argument(
         "--n_samples",
         type=int,
-        default=2,
+        default=1,
         help="how many samples to produce for each given prompt. A.k.a batch size",
     )
     parser.add_argument(
@@ -194,7 +194,14 @@ def main():
     )
 
     opt = parser.parse_args()
-    seed_everything(opt.seed)
+    random_walk = np.random.default_rng()
+    generator = torch.Generator(device="cuda")
+
+    if opt.seed < 0:
+        seed = generator.seed()
+    else:
+        seed = opt.seed
+    seed_everything(seed)
 
     config = OmegaConf.load(f"{opt.config}")
     model = load_model_from_config(config, f"{opt.ckpt}")
@@ -233,6 +240,7 @@ def main():
     init_image = load_img(opt.init_img).to(device)
     init_image = repeat(init_image, '1 ... -> b ...', b=batch_size)
     init_latent = model.get_first_stage_encoding(model.encode_first_stage(init_image))  # move to latent space
+    print("init_latent size =" + str(init_latent.size()))
 
     sampler.make_schedule(ddim_num_steps=opt.ddim_steps, ddim_eta=opt.ddim_eta, verbose=False)
 
@@ -255,22 +263,26 @@ def main():
                             prompts = list(prompts)
                         c = model.get_learned_conditioning(prompts)
 
-                        # encode (scaled latent)
                         z_enc = sampler.stochastic_encode(init_latent, torch.tensor([t_enc]*batch_size).to(device))
-                        # decode it
-                        samples = sampler.decode(z_enc, c, t_enc, unconditional_guidance_scale=opt.scale,
-                                                 unconditional_conditioning=uc,)
+                        for var_numb in range(4):
+                            samples = sampler.decode(z_enc, c, t_enc, unconditional_guidance_scale=opt.scale,
+                                                    unconditional_conditioning=uc,)
 
-                        x_samples = model.decode_first_stage(samples)
-                        x_samples = torch.clamp((x_samples + 1.0) / 2.0, min=0.0, max=1.0)
+                            x_samples = model.decode_first_stage(samples)
+                            x_samples = torch.clamp((x_samples + 1.0) / 2.0, min=0.0, max=1.0)
 
-                        if not opt.skip_save:
-                            for x_sample in x_samples:
-                                x_sample = 255. * rearrange(x_sample.cpu().numpy(), 'c h w -> h w c')
-                                Image.fromarray(x_sample.astype(np.uint8)).save(
-                                    os.path.join(sample_path, f"{base_count:05}.png"))
-                                base_count += 1
-                        all_samples.append(x_samples)
+                            if not opt.skip_save:
+                                for x_sample in x_samples:
+                                    x_sample = 255. * rearrange(x_sample.cpu().numpy(), 'c h w -> h w c')
+                                    Image.fromarray(x_sample.astype(np.uint8)).save(
+                                        os.path.join(sample_path, f"{base_count:05}_{var_numb:01}.png"))
+                                    base_count += 1
+                            all_samples.append(x_samples)
+
+                            for i in range(z_enc.size()[1]):
+                                for j in range(z_enc.size()[2]):
+                                    for k in range(z_enc.size()[3]):
+                                        z_enc[0][i][j][k] += random_walk.uniform(-0.04, 0.04)
 
                 if not opt.skip_grid:
                     # additionally, save as grid
