@@ -231,7 +231,7 @@ def main():
             data = f.read().splitlines()
             data = list(chunk(data, batch_size))
 
-    sample_path = os.path.join(outpath, "samples")
+    sample_path = os.path.join(outpath, "ai_zoo")
     os.makedirs(sample_path, exist_ok=True)
     base_count = len(os.listdir(sample_path))
     grid_count = len(os.listdir(outpath)) - 1
@@ -276,13 +276,16 @@ def main():
                                     x_sample = 255. * rearrange(x_sample.cpu().numpy(), 'c h w -> h w c')
                                     Image.fromarray(x_sample.astype(np.uint8)).save(
                                         os.path.join(sample_path, f"{base_count:05}_{var_numb:01}.png"))
+                                    if var_numb == 0: 
+                                        Image.fromarray(x_sample.astype(np.uint8)).save(
+                                            os.path.join(sample_path, f"live.png"))
                                     base_count += 1
                             all_samples.append(x_samples)
 
                             for i in range(z_enc.size()[1]):
                                 for j in range(z_enc.size()[2]):
                                     for k in range(z_enc.size()[3]):
-                                        z_enc[0][i][j][k] += random_walk.uniform(-0.04, 0.04)
+                                        z_enc[0][i][j][k] += random_walk.uniform(-0.08, 0.08)
 
                 if not opt.skip_grid:
                     # additionally, save as grid
