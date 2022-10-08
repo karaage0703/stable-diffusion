@@ -192,6 +192,13 @@ def main():
         choices=["full", "autocast"],
         default="autocast"
     )
+    parser.add_argument(
+        "--name",
+        type=str,
+        default="karaage",
+        help="file name",
+    )
+
 
     opt = parser.parse_args()
     random_walk = np.random.default_rng()
@@ -275,7 +282,8 @@ def main():
                                 for x_sample in x_samples:
                                     x_sample = 255. * rearrange(x_sample.cpu().numpy(), 'c h w -> h w c')
                                     Image.fromarray(x_sample.astype(np.uint8)).save(
-                                        os.path.join(sample_path, f"{base_count:05}_{var_numb:01}.png"))
+                                        # os.path.join(sample_path, f"{base_count:05}_{var_numb:01}.png"))
+                                        os.path.join(sample_path, f"{opt.name}_{var_numb:01}.png"))
                                     if var_numb == 0: 
                                         Image.fromarray(x_sample.astype(np.uint8)).save(
                                             os.path.join(sample_path, f"live.png"))
@@ -285,7 +293,7 @@ def main():
                             for i in range(z_enc.size()[1]):
                                 for j in range(z_enc.size()[2]):
                                     for k in range(z_enc.size()[3]):
-                                        z_enc[0][i][j][k] += random_walk.uniform(-0.08, 0.08)
+                                        z_enc[0][i][j][k] += random_walk.uniform(-0.10, 0.10)
 
                 if not opt.skip_grid:
                     # additionally, save as grid
