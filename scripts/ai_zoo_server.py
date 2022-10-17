@@ -298,7 +298,9 @@ if __name__ == "__main__":
 
                 if data.upper().decode() == 'CLEAR':
                     print('clear')
-                    os.remove(output_image_file_path)
- 
+                    is_file = os.path.isfile(output_image_file_path)
+                    if is_file:
+                        os.remove(output_image_file_path)
+
             finally:
                 connection.close()
