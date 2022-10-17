@@ -4,7 +4,7 @@ import argparse, os, sys, glob
 import PIL
 import torch
 import numpy as np
-import whisper
+#import whisper
 import socket
 import json
 from omegaconf import OmegaConf
@@ -24,6 +24,8 @@ from ldm.models.diffusion.plms import PLMSSampler
 
 PORT = 7860
 BUFFER_SIZE = 1024
+
+output_image_file_path = '/output/live.png'
 
 def chunk(it, size):
     it = iter(it)
@@ -50,6 +52,18 @@ def load_model_from_config(config, ckpt, verbose=False):
     return model
 
 
+config = OmegaConf.load('configs/stable-diffusion/v1-inference.yaml')
+model = load_model_from_config(config, 'models/ldm/stable-diffusion-v1/model.ckpt')
+
+device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+model = model.to(device)
+
+# whisper_model = whisper.load_model('base', download_root='/cache')
+# result = whisper_model.transcribe('/cache/input.wav', verbose=True, language='ja', task='translate')
+# print(result['text'])
+# prompt = result['text']
+
+
 def load_img(path):
     image = Image.open(path).convert("RGB")
     w, h = image.size
@@ -66,18 +80,11 @@ def stable_diffusion():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "--prompt",
-        type=str,
-        nargs="?",
-        default="a painting of a virus monster playing guitar",
-        help="the prompt to render"
-    )
-
-    parser.add_argument(
         "--init-img",
         type=str,
         nargs="?",
-        help="path to the input image"
+        help="path to the input image",
+        default="/cache/input.png"
     )
 
     parser.add_argument(
@@ -86,12 +93,6 @@ def stable_diffusion():
         nargs="?",
         help="dir to write results to",
         default="/output/"
-    )
-
-    parser.add_argument(
-        "--skip_grid",
-        action='store_true',
-        help="do not save a grid, only individual samples. Helpful when evaluating lots of samples",
     )
 
     parser.add_argument(
@@ -173,21 +174,9 @@ def stable_diffusion():
         help="if specified, load prompts from this file",
     )
     parser.add_argument(
-        "--config",
-        type=str,
-        default="configs/stable-diffusion/v1-inference.yaml",
-        help="path to config which constructs model",
-    )
-    parser.add_argument(
-        "--ckpt",
-        type=str,
-        default="models/ldm/stable-diffusion-v1/model.ckpt",
-        help="path to checkpoint of model",
-    )
-    parser.add_argument(
         "--seed",
         type=int,
-        default=42,
+        default=-1,
         help="the seed (for reproducible sampling)",
     )
     parser.add_argument(
@@ -197,17 +186,14 @@ def stable_diffusion():
         choices=["full", "autocast"],
         default="autocast"
     )
-    parser.add_argument(
-        "--name",
-        type=str,
-        default="karaage",
-        help="file name",
-    )
 
     with open('/cache/input.json') as f:
         input_json = json.load(f)
 
     print(input_json['prompt'])
+    print(input_json['name'])
+    prompt = input_json['prompt']
+    animal_name = input_json['name']
 
     opt = parser.parse_args()
     random_walk = np.random.default_rng()
@@ -218,16 +204,6 @@ def stable_diffusion():
     else:
         seed = opt.seed
     seed_everything(seed)
-
-    config = OmegaConf.load(f"{opt.config}")
-    model = load_model_from_config(config, f"{opt.ckpt}")
-
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-    model = model.to(device)
-
-    whisper_model = whisper.load_model("base")
-    result = whisper_model.transcribe('test.wav', verbose=True, language='ja', task='translate')
-    print(result['text'])
 
     if opt.plms:
         raise NotImplementedError("PLMS sampler not (yet) supported")
@@ -240,21 +216,11 @@ def stable_diffusion():
 
     batch_size = opt.n_samples
     n_rows = opt.n_rows if opt.n_rows > 0 else batch_size
-    if not opt.from_file:
-        prompt = opt.prompt
-        assert prompt is not None
-        data = [batch_size * [prompt]]
-
-    else:
-        print(f"reading prompts from {opt.from_file}")
-        with open(opt.from_file, "r") as f:
-            data = f.read().splitlines()
-            data = list(chunk(data, batch_size))
+    data = [batch_size * [prompt]]
 
     sample_path = os.path.join(outpath, "ai_zoo")
     os.makedirs(sample_path, exist_ok=True)
     base_count = len(os.listdir(sample_path))
-    grid_count = len(os.listdir(outpath)) - 1
 
     assert os.path.isfile(opt.init_img)
     init_image = load_img(opt.init_img).to(device)
@@ -295,11 +261,9 @@ def stable_diffusion():
                                 for x_sample in x_samples:
                                     x_sample = 255. * rearrange(x_sample.cpu().numpy(), 'c h w -> h w c')
                                     Image.fromarray(x_sample.astype(np.uint8)).save(
-                                        # os.path.join(sample_path, f"{base_count:05}_{var_numb:01}.png"))
-                                        os.path.join(sample_path, f"{opt.name}_{var_numb:01}.png"))
+                                        os.path.join(sample_path, f"{animal_name}_{var_numb:01}.png"))
                                     if var_numb == 0: 
-                                        Image.fromarray(x_sample.astype(np.uint8)).save(
-                                            os.path.join(sample_path, f"live.png"))
+                                        Image.fromarray(x_sample.astype(np.uint8)).save(output_image_file_path)
                                     base_count += 1
                             all_samples.append(x_samples)
 
@@ -307,17 +271,6 @@ def stable_diffusion():
                                 for j in range(z_enc.size()[2]):
                                     for k in range(z_enc.size()[3]):
                                         z_enc[0][i][j][k] += random_walk.uniform(-0.10, 0.10)
-
-                if not opt.skip_grid:
-                    # additionally, save as grid
-                    grid = torch.stack(all_samples, 0)
-                    grid = rearrange(grid, 'n b c h w -> (n b) c h w')
-                    grid = make_grid(grid, nrow=n_rows)
-
-                    # to image
-                    grid = 255. * rearrange(grid, 'c h w -> h w c').cpu().numpy()
-                    Image.fromarray(grid.astype(np.uint8)).save(os.path.join(outpath, f'grid-{grid_count:04}.png'))
-                    grid_count += 1
 
                 toc = time.time()
 
@@ -329,6 +282,8 @@ if __name__ == "__main__":
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(('0.0.0.0', PORT))
         s.listen()
+
+        print('Waiting for connection...')
         while True:
             (connection, client) = s.accept()
             try:
@@ -341,9 +296,9 @@ if __name__ == "__main__":
                     print('start')
                     stable_diffusion()
 
-                if data.upper() == 'CLEAR':
-                    pass
-
+                if data.upper().decode() == 'CLEAR':
+                    print('clear')
+                    os.remove(output_image_file_path)
+ 
             finally:
                 connection.close()
-    # main()
