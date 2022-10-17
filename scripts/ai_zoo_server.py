@@ -52,17 +52,6 @@ def load_model_from_config(config, ckpt, verbose=False):
     return model
 
 
-config = OmegaConf.load('configs/stable-diffusion/v1-inference.yaml')
-model = load_model_from_config(config, 'models/ldm/stable-diffusion-v1/model.ckpt')
-
-device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-model = model.to(device)
-
-# whisper_model = whisper.load_model('base', download_root='/cache')
-# result = whisper_model.transcribe('/cache/input.wav', verbose=True, language='ja', task='translate')
-# print(result['text'])
-# prompt = result['text']
-
 
 def load_img(path):
     image = Image.open(path).convert("RGB")
@@ -284,6 +273,19 @@ if __name__ == "__main__":
         s.listen()
 
         print('Waiting for connection...')
+
+
+        config = OmegaConf.load('configs/stable-diffusion/v1-inference.yaml')
+        model = load_model_from_config(config, 'models/ldm/stable-diffusion-v1/model.ckpt')
+
+        device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+        model = model.to(device)
+
+        # whisper_model = whisper.load_model('base', download_root='/cache')
+        # result = whisper_model.transcribe('/cache/input.wav', verbose=True, language='ja', task='translate')
+        # print(result['text'])
+        # prompt = result['text']
+
         while True:
             (connection, client) = s.accept()
             try:
