@@ -1,10 +1,9 @@
-"""make variations of input image"""
 
 import argparse, os, sys, glob
 import PIL
 import torch
 import numpy as np
-#import whisper
+import whisper
 import socket
 import json
 from omegaconf import OmegaConf
@@ -52,7 +51,6 @@ def load_model_from_config(config, ckpt, verbose=False):
     return model
 
 
-
 def load_img(path):
     image = Image.open(path).convert("RGB")
     w, h = image.size
@@ -65,7 +63,7 @@ def load_img(path):
     return 2.*image - 1.
 
 
-def text_to_image():
+def text_to_image(prompt):
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
@@ -111,13 +109,13 @@ def text_to_image():
     parser.add_argument(
         "--H",
         type=int,
-        default=512,
+        default=256,
         help="image height, in pixel space",
     )
     parser.add_argument(
         "--W",
         type=int,
-        default=512,
+        default=256,
         help="image width, in pixel space",
     )
     parser.add_argument(
@@ -164,17 +162,9 @@ def text_to_image():
         default="autocast"
     )
 
-
-    with open('/cache/input.json') as f:
-        input_json = json.load(f)
-
-    print(input_json['prompt'])
-    print(input_json['name'])
-    prompt = input_json['prompt']
-    animal_name = input_json['name']
+    prompt = prompt
 
     opt = parser.parse_args()
-    random_walk = np.random.default_rng()
     generator = torch.Generator(device="cuda")
 
     if opt.seed < 0:
@@ -458,10 +448,7 @@ if __name__ == "__main__":
         device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
         model = model.to(device)
 
-        # whisper_model = whisper.load_model('base', download_root='/cache')
-        # result = whisper_model.transcribe('/cache/input.wav', verbose=True, language='ja', task='translate')
-        # print(result['text'])
-        # prompt = result['text']
+        whisper_model = whisper.load_model('base', download_root='/cache')
 
         print('Waiting for connection...')
 
@@ -477,9 +464,12 @@ if __name__ == "__main__":
                     print('start')
                     image_to_image()
 
-                if data.upper().decode() == 'T2I':
+                if data.upper().decode() == 'V2I':
                     print('start')
-                    text_to_image()
+                    result = whisper_model.transcribe('/cache/input.wav', verbose=True, language='ja', task='translate')
+                    print(result['text'])
+                    prompt = result['text']
+                    text_to_image(prompt)
 
                 if data.upper().decode() == 'CLEAR':
                     print('clear')
